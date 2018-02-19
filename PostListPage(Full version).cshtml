@@ -1,0 +1,175 @@
+@inherits Umbraco.Web.Mvc.UmbracoTemplatePage<ContentModels.PostListPage>
+@using ContentModels = Umbraco.Web.PublishedContentModels;
+@using Flurl;
+@{
+	Layout = "Master.cshtml";
+}
+
+@{
+    // Version 2: shows proper pagination, full version
+    // Grab all categories for sub-nav and infer the selected category (if provided)
+    var postCategories = Model.Content.Descendants<ContentModels.PostCategory>().ToList();
+    IPublishedContent selectedCategory = postCategories.FirstOrDefault(c => Request.QueryString["c"] == StringUtils.GenerateSlug(c.Name));
+
+    List<Umbraco.Web.PublishedContentModels.PostPage> childPages;
+
+    // If selected category is unspecified, then pull all posts across all categories
+    if(selectedCategory == null)
+    {
+        childPages = Model.Content.Descendants()
+            .Where(x => x.IsDocumentType("postPage"))
+            .Cast<Umbraco.Web.PublishedContentModels.PostPage>()
+            .OrderByDescending(x => x.PostDate)
+            .ToList();
+    }
+    else // else, just load the specific posts under a category
+    {
+        childPages = selectedCategory.Descendants()
+            .Where(x => x.IsDocumentType("postPage"))
+            .Cast<Umbraco.Web.PublishedContentModels.PostPage>()
+            .OrderByDescending(x => x.PostDate)
+            .ToList();
+    }
+
+    var pageSize = 10; // set the size of the page..
+
+    int page; int.TryParse(Request.QueryString["page"], out page); // initialize page from query string. if unset, then start from page 1
+    if (page <= 0)
+    {
+        page = 1;
+    }
+
+    // infer the page chunk from a known page number
+    var skipNum = (page-1) * pageSize;
+    var pageChunk = childPages.Skip(skipNum).Take(pageSize).ToList();
+
+    var totalPages = (int)Math.Ceiling((decimal)childPages.Count() / pageSize);
+    if (page > totalPages)
+    {
+        page = totalPages;
+    }
+    else if (page < 1)
+    {
+        page = 1;
+    }
+}
+
+<!-- MAIN CONTENT -->
+<div class="main" role="main">
+ <!-- START BREADCRUMBS SECTION -->
+    @Html.Partial("Navigations/Breadcrumbs", Model)
+ <!-- END BREADCRUMBS SECTION -->
+<!-- START PAGE CONTENT SECTION -->
+<section class="section section-m-content">
+    <div class="page-title">
+        <div class="l-wrapper container">
+            <h1>@Model.Content.Name</h1>
+        </div>
+    </div>
+    <div class="page-content">
+        <div class="l-wrapper container">
+            <div class="page-content-listing">
+                <div class="row">
+                    <div class="col-xs-12 col-sm-7">
+                        <div class="text-with-link">
+                            @foreach(var child in pageChunk)
+                            {
+                                var postDate = child.GetPropertyValue<DateTime>("postDate");
+                                var postBlurb = child.GetPropertyValue<string>("postBlurb");
+                                if (string.IsNullOrWhiteSpace(postBlurb))
+                                {
+                                    postBlurb = StringUtils.GetPlainTextFromHtml(child.GetPropertyValue<IHtmlString>("postContent").ToString());
+
+                                    var max = 300;
+                                    if (postBlurb.Length > max)
+                                    {
+                                        postBlurb = postBlurb.Substring(0, max-3) + "...";
+                                    }
+                                }
+
+                                <div class="text-with-link--heading">
+                                    <h2><a href="@child.Url">@child.GetPropertyValue("postTitle", child.Name)</a></h2>
+                                </div>
+                                <div class="text-with-link--date">
+                                    @postDate.ToString("dd MMMM yyyy")
+                                </div>
+                                if (!string.IsNullOrWhiteSpace(postBlurb))
+                                {
+                                    <div class="text-with-link--text">
+                                        <p>@postBlurb</p>
+                                    </div>
+                                }
+                                <div class="text-with-link--btn">
+                                    <a href="@child.Url" class="btn">Read More</a>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-xs-12 col-sm-4 col-sm-offset-1 hidden-xs visible-sm visible-md visible-lg">
+                        <div class="sub-nav">
+                            <ul class="sub-nav-list">
+                                @foreach(var category in postCategories)
+                                {
+                                    <li><a href="@string.Format("{0}?c={1}", Model.Content.Url, StringUtils.GenerateSlug(category.Name))">@category.Name</a></li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            @if (totalPages > 1)
+            {
+                string baseUrl = Request.Url.ToString();
+                if (selectedCategory != null)
+                {
+                    baseUrl = baseUrl.SetQueryParam("c", StringUtils.GenerateSlug(selectedCategory.Name));
+                }
+
+                int window = 2;
+                int range = window * 2;
+
+                int start = (page - window) <= 0 ? 1 : (page - window);
+                int end = start + range;
+
+                if (end > totalPages)
+                {
+                    end = totalPages;
+                    start = (end - range) <= 0 ? 1 : end - range;
+                }
+
+                <nav id="pagination" class="pagination">
+                    <ul>
+                        @if (start > 1)
+                        {
+                            <li><a href="@baseUrl.SetQueryParam("page", page-1)"><span class="fa fa-chevron-left"></span></a></li>
+                        }
+                        @for (int p = start; p < end + 1; p++)
+                        {
+                            var active = (p == page);
+                            var pageUrl = baseUrl.SetQueryParam("page", p);
+                            <li><a class="@(active ? "s-active" : null)" href="@(active ? "javascript:;" : pageUrl.ToString())">@p</a></li>
+                        }
+                        @if (end < totalPages)
+                        {
+                            <li><a href="@baseUrl.SetQueryParam("page", page+1)"><span class="fa fa-chevron-right"></span></a></li>
+                        }
+                    </ul>
+                </nav>
+            }
+            else if (childPages.Any()) // only render pagination if page has content
+            {
+                <nav id="pagination" class="pagination">
+                    <ul>
+                        <li><a href="javascript:;" class="s-active">1</a></li>
+                    </ul>
+                </nav>
+            }
+        </div>
+    </div>
+</section>
+<!-- END PAGE CONTENT SECTION -->
+    <!-- START BOTTOM BANNER SECTION -->
+    @Html.Partial("Outro")
+    <!-- END BOTTOM BANNER SECTION -->
+</div>
+<!-- END MAIN CONTENT -->

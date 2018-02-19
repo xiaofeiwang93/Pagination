@@ -1,0 +1,142 @@
+@inherits Umbraco.Web.Mvc.UmbracoTemplatePage
+@using YourNameSpace.Helpers;
+@using ContentModels = Umbraco.Web.PublishedContentModels;
+@using Flurl;
+@{
+    Layout = "Master.cshtml";
+}
+
+@{ 
+    //Version 1: only shows "Previous" and "Next" in the pagination.
+    List<Umbraco.Web.PublishedContentModels.NewsItemPage> childPages;
+
+    childPages = Model.Content.Descendants<Umbraco.Web.PublishedContentModels.NewsItemPage>()
+        .OrderByDescending(x => x.ArticlePostDate) //Order by Article Date 
+        .ToList();
+
+    var pageSize = 5; //The number of items displaying in one page
+    int page; int.TryParse(Request.QueryString["page"], out page); // initialize page from query string. if unset, then start from page 1
+    if (page <= 0)
+    {
+        page = 1;
+    }
+    //infer the page chunk from a konwn page number
+    var skipNum = (page - 1) * pageSize;
+    var pageChunk = childPages.Skip(skipNum).Take(pageSize).ToList();
+
+    var totalPages = (int)Math.Ceiling((decimal)childPages.Count() / pageSize);
+    if (page > totalPages)
+    {
+        page = totalPages;
+    }
+    else if (page < 1)
+    {
+        page = 1;
+    }
+}
+
+<div class="l-content" role="main">            
+            <div class="l-wrapper">
+                <div class="row">
+                    <div class="col col-xs-12">
+                        <h1 class="hd-title">@Umbraco.Field("newsListPageTitle", altFieldAlias:"pageName")</h1>
+                    </div>
+                </div>
+
+                <div id="js-mobile-search-widget-container"></div>
+
+                <div class="row u-overflow-hidden">
+                    <div class="col col-xs-12 col-md-8">                        
+                        <div class="list list-m-w-right-aside">
+                            @{
+                                foreach (var child in pageChunk)
+                                {
+                                    var postDate = child.GetPropertyValue<DateTime>("articlePostDate");
+                                    var postBlurb = child.GetPropertyValue<string>("articleBlurb");
+                                    if (string.IsNullOrWhiteSpace(postBlurb))
+                                    {
+                                        postBlurb = StringUtils.GetPlainTextFromHtml(child.GetPropertyValue<IHtmlString>("articleBody").ToString());
+                                        var max = 300;
+                                        if (postBlurb.Length > max)
+                                        {
+                                            postBlurb = postBlurb.Substring(0, max - 3) + "...";
+                                        }
+                                    }
+
+                                    <div class="list--item list--item-m-media">
+                                        @if (child.GetPropertyValue<Image>("articleTitleImage") != null)
+                                        {
+                                            var postPhoto = child.GetPropertyValue<Image>("articleTitleImage");
+                                            <div class="list--item--img">
+                                                <img src="@(postPhoto.Url)?quality=70" alt="@child.GetPropertyValue("articleTitle")" />
+                                            </div>
+                                        }
+                                        <div class="list--item--blurb">
+                                            <h2 class="list--item--hd">
+                                                <a href="@child.Url">@child.GetPropertyValue("articleTitle")</a>
+                                            </h2>
+                                            @* TODO frontend: please add css class / change element per necessary*@
+                                            <span>@(postDate.ToString("dd MMM yyyy"))</span>
+
+                                            @if (!string.IsNullOrWhiteSpace(postBlurb))
+                                            {
+                                                <p>@postBlurb</p>
+                                            }
+                                            <a href="@child.Url" class="list--item--cta">Read More</a>
+                                        </div>
+                                    </div>
+                                }
+                            }                                                      
+                        </div>
+                        @{
+                            if (totalPages > 1)
+                            {
+                                string baseUrl = Request.Url.ToString();
+                                <div class="l-section">
+                                    <div class="pagination u-clearfix">
+                                        @if (page > 1)
+                                        {
+                                            <a href="@baseUrl.SetQueryParam("page", page - 1)" class="pull-left">
+                                                <i class="fa fa-angle-left" aria-hidden="true"></i> Previous articles
+                                            </a>
+                                        }
+                                        @if (page < totalPages)
+                                        {
+                                            <a href="@baseUrl.SetQueryParam("page", page + 1)" class="pull-right">
+                                                Next articles
+                                                <i class="fa fa-angle-right" aria-hidden="true"></i>
+                                            </a>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                       }
+                    </div>
+                    <div class="col col-xs-12 col-md-4 l-aside">                        
+                        <aside>
+                            <h3 class="h2">@Umbraco.Field("newsListPageSideBarTitle", altText: "Recent Posts")</h3>
+                            <div class="list">
+                                @{
+                                    foreach (var child in childPages)
+                                    {
+                                        var postDate = child.GetPropertyValue<DateTime>("articlePostDate");
+                                        var postBlurb = child.GetPropertyValue<string>("articleBlurb");
+                                        if (string.IsNullOrWhiteSpace(postBlurb))
+                                        {
+                                            postBlurb = StringUtils.GetPlainTextFromHtml(child.GetPropertyValue<IHtmlString>("articleBody").ToString());
+                                            var max = 100;
+                                            if (postBlurb.Length > max)
+                                            {
+                                                postBlurb = postBlurb.Substring(0, max - 3) + "...";
+                                            }
+                                        }
+                                        <a href="@child.Url" class="list--item">@postBlurb</a>
+                                    }
+                                }
+                            </div>
+                        </aside>
+                    </div>
+                </div>
+            </div>                        
+		</div>
+
